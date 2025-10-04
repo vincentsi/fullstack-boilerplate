@@ -40,10 +40,27 @@ if (!parsed.success) {
 }
 
 /**
- * Export des variables d'environnement validées et typées
+ * Variables d'environnement validées et typées
+ * Validation fail-fast au démarrage de l'application
  *
- * Usage:
+ * @example
+ * ```typescript
  * import { env } from '@/config/env'
- * console.log(env.PORT) // TypeScript sait que c'est un string
+ *
+ * console.log(env.PORT)           // "3001" (string)
+ * console.log(env.NODE_ENV)       // "development" | "production" | "test"
+ * console.log(env.DATABASE_URL)   // "postgresql://..." (URL validée)
+ * console.log(env.JWT_SECRET)     // Min 32 chars garanti par Zod
+ * ```
+ *
+ * @example
+ * ```bash
+ * # .env file
+ * NODE_ENV=development
+ * PORT=3001
+ * DATABASE_URL=postgresql://postgres:password@localhost:5432/mydb
+ * JWT_SECRET=your-super-secret-key-min-32-chars
+ * JWT_REFRESH_SECRET=your-refresh-secret-key-min-32-chars
+ * ```
  */
 export const env = parsed.data

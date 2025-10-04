@@ -60,6 +60,16 @@ export class AuthService {
    * @param token - JWT access token
    * @returns Payload du token si valide
    * @throws Error si token invalide ou expiré
+   *
+   * @example
+   * ```typescript
+   * try {
+   *   const payload = authService.verifyAccessToken('eyJhbGc...')
+   *   console.log(payload.userId)  // "clxxx..."
+   * } catch (error) {
+   *   console.error('Invalid token')
+   * }
+   * ```
    */
   verifyAccessToken(token: string): { userId: string } {
     try {
@@ -89,9 +99,22 @@ export class AuthService {
 
   /**
    * Inscrit un nouvel utilisateur
-   * @param data - Données d'inscription
+   * @param data - Données d'inscription (email, password, name optionnel)
    * @returns Utilisateur créé avec access et refresh tokens
    * @throws Error si email déjà utilisé
+   *
+   * @example
+   * ```typescript
+   * const result = await authService.register({
+   *   email: 'user@example.com',
+   *   password: 'SecurePass123',
+   *   name: 'John Doe'
+   * })
+   *
+   * console.log(result.user.id)           // "clxxx..."
+   * console.log(result.accessToken)       // "eyJhbGc..."
+   * console.log(result.refreshToken)      // "eyJhbGc..."
+   * ```
    */
   async register(data: RegisterDTO): Promise<{
     user: Omit<User, 'password'>
@@ -135,9 +158,21 @@ export class AuthService {
 
   /**
    * Connecte un utilisateur
-   * @param data - Credentials de connexion
+   * @param data - Credentials de connexion (email, password)
    * @returns Utilisateur avec access et refresh tokens
    * @throws Error si credentials invalides
+   *
+   * @example
+   * ```typescript
+   * const result = await authService.login({
+   *   email: 'user@example.com',
+   *   password: 'SecurePass123'
+   * })
+   *
+   * console.log(result.user.email)        // "user@example.com"
+   * console.log(result.accessToken)       // "eyJhbGc..." (expire 15min)
+   * console.log(result.refreshToken)      // "eyJhbGc..." (expire 7 jours)
+   * ```
    */
   async login(data: LoginDTO): Promise<{
     user: Omit<User, 'password'>
@@ -178,9 +213,17 @@ export class AuthService {
 
   /**
    * Rafraîchit l'access token avec un refresh token
-   * @param refreshToken - Refresh token
+   * @param refreshToken - Refresh token valide (7 jours)
    * @returns Nouveau access token et refresh token
-   * @throws Error si refresh token invalide
+   * @throws Error si refresh token invalide ou utilisateur supprimé
+   *
+   * @example
+   * ```typescript
+   * const tokens = await authService.refresh('eyJhbGc...')
+   *
+   * console.log(tokens.accessToken)       // Nouveau token (15min)
+   * console.log(tokens.refreshToken)      // Nouveau refresh token (7j)
+   * ```
    */
   async refresh(refreshToken: string): Promise<{
     accessToken: string

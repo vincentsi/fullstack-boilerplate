@@ -3,8 +3,29 @@ import { authService } from '@/services/auth.service'
 
 /**
  * Middleware d'authentification JWT
- * Vérifie le token dans le header Authorization
- * Injecte userId dans request.user si valide
+ * Vérifie le token dans le header Authorization et injecte userId dans request.user
+ *
+ * @param request - Fastify request object
+ * @param reply - Fastify reply object
+ * @throws 401 si token manquant, invalide ou expiré
+ *
+ * @example
+ * ```typescript
+ * // Dans une route protégée
+ * app.get('/api/auth/me', {
+ *   preHandler: authMiddleware
+ * }, async (request, reply) => {
+ *   const userId = request.user.userId  // Injecté par le middleware
+ *   const user = await authService.getCurrentUser(userId)
+ *   return { user }
+ * })
+ * ```
+ *
+ * @example
+ * ```bash
+ * # Requête avec token
+ * curl -H "Authorization: Bearer eyJhbGc..." http://localhost:3001/api/auth/me
+ * ```
  */
 export async function authMiddleware(
   request: FastifyRequest,
