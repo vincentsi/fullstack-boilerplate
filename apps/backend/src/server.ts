@@ -1,5 +1,7 @@
 import { createApp } from './app'
 import { env } from '@/config/env'
+import { disconnectPrisma } from '@/config/prisma'
+import type { FastifyInstance } from 'fastify'
 
 /**
  * Server entry point
@@ -8,10 +10,12 @@ import { env } from '@/config/env'
  * 3. Start listening on PORT
  * 4. Handle graceful shutdown
  */
+let app: FastifyInstance | null = null
+
 async function start() {
   try {
     // Create app
-    const app = await createApp()
+    app = await createApp()
 
     // Start server
     const port = Number(env.PORT)
@@ -21,7 +25,28 @@ async function start() {
     console.log(`📊 Health check: http://localhost:${port}/api/health`)
   } catch (error) {
     console.error('❌ Error starting server:', error)
+    await cleanup()
     process.exit(1)
+  }
+}
+
+/**
+ * Cleanup resources before shutdown
+ * Closes server and database connections
+ */
+async function cleanup() {
+  try {
+    if (app) {
+      console.log('🔌 Closing server...')
+      await app.close()
+    }
+
+    console.log('🔌 Closing database connection...')
+    await disconnectPrisma()
+
+    console.log('✅ Cleanup complete')
+  } catch (error) {
+    console.error('❌ Error during cleanup:', error)
   }
 }
 
@@ -29,7 +54,8 @@ async function start() {
 const signals = ['SIGINT', 'SIGTERM'] as const
 for (const signal of signals) {
   process.on(signal, async () => {
-    console.log(`\n⚠️  Received ${signal}, closing server...`)
+    console.log(`\n⚠️  Received ${signal}, shutting down gracefully...`)
+    await cleanup()
     process.exit(0)
   })
 }
