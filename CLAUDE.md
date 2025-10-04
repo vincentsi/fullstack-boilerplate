@@ -107,10 +107,11 @@ Apps extend appropriate config:
 ### Backend (Fastify + Prisma)
 
 - **Framework**: Fastify 5.x for high performance
-- **Database**: PostgreSQL with Prisma ORM 6.x
+- **Database**: PostgreSQL with Prisma ORM 6.x (singleton pattern)
 - **Environment**: dotenv + Zod validation (fail-fast on invalid config)
 - **Validation**: Zod schemas for request/response validation
-- **Security**: @fastify/helmet, @fastify/cors, @fastify/rate-limit
+- **Security**: @fastify/helmet, @fastify/cors, @fastify/rate-limit, @fastify/compress
+- **Error Handling**: Centralized handler for Zod, Prisma, JWT errors
 - **Logging**: Pino with pino-pretty for development
 - **Authentication**: JWT with bcrypt password hashing and refresh tokens
 - **Hashing**: bcryptjs for password hashing
@@ -126,10 +127,12 @@ Apps extend appropriate config:
   ├── app.ts              # Fastify app factory (testable, no .listen)
   ├── server.ts           # Entry point (loads env, starts server)
   ├── config/
-  │   └── env.ts          # Zod-validated environment variables
+  │   ├── env.ts          # Zod-validated environment variables
+  │   └── prisma.ts       # PrismaClient singleton with connection pooling
   ├── middlewares/
-  │   ├── security.middleware.ts  # Helmet, CORS, Rate limit
-  │   └── auth.middleware.ts      # JWT verification
+  │   ├── security.middleware.ts      # Helmet, CORS, Rate limit, Compression
+  │   ├── auth.middleware.ts          # JWT verification
+  │   └── error-handler.middleware.ts # Centralized error handling (Zod, Prisma, JWT)
   ├── routes/             # Route registration (health, auth)
   ├── controllers/        # Request handlers (auth controller)
   ├── services/           # Business logic (auth service)
@@ -216,8 +219,9 @@ Comprehensive documentation outside the boilerplate for library references:
 ### Fastify Application Structure
 
 - **Separation of concerns**: `app.ts` creates the Fastify instance (testable), `server.ts` starts it
-- **Security first**: All apps must register security middlewares (Helmet, CORS, Rate limiting) before routes
-- **Middleware order matters**: Security → Authentication → Routes
+- **Security first**: All apps must register security middlewares (Helmet, CORS, Rate limiting, Compression) before routes
+- **Middleware order matters**: Security → Error Handler → Routes (auth middleware per-route)
+- **Error Handling**: Use centralized error handler via `app.setErrorHandler()` instead of try-catch in controllers
 - **Logging**: Use `app.log` (Pino) instead of `console.log` for structured logging
 
 ### Prisma Schema Conventions
@@ -233,11 +237,21 @@ All backend imports use TypeScript path aliases defined in `tsconfig.json`:
 
 ```typescript
 import { env } from '@/config/env'
+import { prisma } from '@/config/prisma'
 import { userService } from '@/services/user.service'
 import { authMiddleware } from '@/middlewares/auth.middleware'
+import { errorHandler } from '@/middlewares/error-handler.middleware'
 ```
 
 Never use relative imports like `../../../config/env`
+
+### Database Connection
+
+- **PrismaClient Singleton**: Always use `import { prisma } from '@/config/prisma'` instead of `new PrismaClient()`
+- **Connection Pooling**: Configured in singleton with proper env-based logging
+- **Development**: Singleton preserved across hot-reloads (prevents connection exhaustion)
+- **Graceful Shutdown**: `disconnectPrisma()` function available for clean server shutdown
+- **Logging**: Query logs disabled in dev by default (only errors/warnings), enable temporarily for debugging
 
 ### Authentication System
 
@@ -279,6 +293,22 @@ declare module 'fastify' {
 ```
 
 This extends Fastify's types to include the `user` property injected by auth middleware.
+
+### Error Handling Pattern
+
+- **Centralized Handler**: Use `app.setErrorHandler(errorHandler)` in app setup
+- **Controller Pattern**: Controllers can throw errors directly, handler catches them
+- **Automatic Handling**: Zod validation errors, Prisma errors, JWT errors are handled automatically
+- **Development vs Production**: Stack traces and error details only exposed in development
+- **Example**:
+  ```typescript
+  // Controller - no try-catch needed
+  async register(request, reply) {
+    const data = registerSchema.parse(request.body) // Throws ZodError if invalid
+    const user = await authService.register(data)   // Throws if email exists
+    return reply.send({ user })                     // Error handler catches all
+  }
+  ```
 
 ### ESLint Configuration
 
