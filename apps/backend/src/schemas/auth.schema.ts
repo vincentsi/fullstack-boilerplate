@@ -13,11 +13,11 @@ export const registerSchema = z.object({
     .trim(),
   password: z
     .string()
-    .min(8, 'Password must be at least 8 characters')
+    .min(12, 'Password must be at least 12 characters')
     .max(100, 'Password must be less than 100 characters')
     .regex(
-      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
-      'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/,
+      'Password must contain uppercase, lowercase, number, and special character (@$!%*?&)'
     ),
   name: z.string().min(2, 'Name must be at least 2 characters').optional(),
 })

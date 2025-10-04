@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify'
 import helmet from '@fastify/helmet'
 import cors from '@fastify/cors'
 import rateLimit from '@fastify/rate-limit'
+import compress from '@fastify/compress'
 import { env } from '@/config/env'
 
 /**
@@ -9,10 +10,17 @@ import { env } from '@/config/env'
  * - Helmet: Security headers
  * - CORS: Cross-Origin Resource Sharing
  * - Rate Limiting: Prevent abuse
+ * - Compression: Gzip/Brotli responses
  */
 export async function registerSecurityMiddlewares(
   app: FastifyInstance
 ): Promise<void> {
+  // Compression - Gzip/Brotli
+  await app.register(compress, {
+    global: true,
+    threshold: 1024, // Compress responses > 1KB
+  })
+
   // Helmet - Security headers
   await app.register(helmet, {
     // Permet les inline scripts en dev (Next.js, etc.)
@@ -24,7 +32,7 @@ export async function registerSecurityMiddlewares(
     origin:
       env.NODE_ENV === 'production'
         ? ['https://your-production-domain.com'] // Remplacer en production
-        : true, // Allow all origins in dev
+        : ['http://localhost:3000', 'http://localhost:3001'], // URLs frontend en dev
     credentials: true, // Allow cookies
   })
 

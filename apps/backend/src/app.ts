@@ -2,6 +2,7 @@ import Fastify from 'fastify'
 import type { FastifyInstance } from 'fastify'
 import { env } from '@/config/env'
 import { registerSecurityMiddlewares } from '@/middlewares/security.middleware'
+import { errorHandler } from '@/middlewares/error-handler.middleware'
 import { healthRoutes } from '@/routes/health.route'
 import { authRoutes } from '@/routes/auth.route'
 
@@ -10,8 +11,9 @@ import { authRoutes } from '@/routes/auth.route'
  * Architecture :
  * 1. Initialize Fastify with logger
  * 2. Register security middlewares (Helmet, CORS, Rate Limit)
- * 3. Register routes
- * 4. Return configured app
+ * 3. Register error handler
+ * 4. Register routes
+ * 5. Return configured app
  */
 export async function createApp(): Promise<FastifyInstance> {
   // Initialize Fastify with Pino logger
@@ -33,6 +35,9 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Register security middlewares
   await registerSecurityMiddlewares(app)
+
+  // Register global error handler
+  app.setErrorHandler(errorHandler)
 
   // Register routes
   await app.register(healthRoutes, { prefix: '/api' })
