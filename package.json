@@ -1,14 +1,19 @@
 {
   "name": "fullstack-boilerplate",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Fullstack boilerplate with Turborepo, Fastify, Prisma, and Next.js",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "type-check": "turbo run type-check",
+    "test": "turbo run test"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "devDependencies": {
     "@turbo/gen": "^2.5.8",
     "husky": "^9.1.7",
@@ -23,5 +28,6 @@
     "*.{json,md}": [
       "prettier --write"
     ]
-  }
+  },
+  "license": "MIT"
 }
