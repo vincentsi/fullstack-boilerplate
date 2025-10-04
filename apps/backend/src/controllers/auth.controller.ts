@@ -29,6 +29,9 @@ export class AuthController {
       // Créer l'utilisateur
       const result = await authService.register(data)
 
+      // Log successful registration
+      request.log.info({ email: data.email }, 'New user registered')
+
       return reply.status(201).send({
         success: true,
         data: result,
@@ -37,6 +40,12 @@ export class AuthController {
       if (error instanceof Error) {
         // Email déjà utilisé
         if (error.message === 'Email already in use') {
+          // Security logging: Log failed registration attempt
+          request.log.warn(
+            { email: request.body.email, ip: request.ip },
+            'Registration failed - email already exists'
+          )
+
           return reply.status(409).send({
             success: false,
             error: 'Email already in use',
@@ -77,6 +86,9 @@ export class AuthController {
       // Authentifier l'utilisateur
       const result = await authService.login(data)
 
+      // Log successful login
+      request.log.info({ email: data.email }, 'User logged in successfully')
+
       return reply.status(200).send({
         success: true,
         data: result,
@@ -85,6 +97,12 @@ export class AuthController {
       if (error instanceof Error) {
         // Credentials invalides
         if (error.message === 'Invalid credentials') {
+          // Security logging: Log failed login attempt
+          request.log.warn(
+            { email: request.body.email, ip: request.ip },
+            'Failed login attempt'
+          )
+
           return reply.status(401).send({
             success: false,
             error: 'Invalid credentials',

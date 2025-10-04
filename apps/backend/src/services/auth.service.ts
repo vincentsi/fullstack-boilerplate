@@ -1,10 +1,9 @@
-import { PrismaClient, User } from '@prisma/client'
+import type { User } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { env } from '@/config/env'
+import { prisma } from '@/config/prisma'
 import type { RegisterDTO, LoginDTO } from '@/schemas/auth.schema'
-
-const prisma = new PrismaClient()
 
 /**
  * Service d'authentification
@@ -150,17 +149,16 @@ export class AuthService {
       where: { email: data.email },
     })
 
-    if (!user) {
-      throw new Error('Invalid credentials')
-    }
-
-    // Vérifier le password
+    // Fix timing attack: always run bcrypt.compare even if user doesn't exist
+    // This ensures constant-time response regardless of email validity
+    const passwordToCompare = user?.password || '$2a$10$invalidhashxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
     const isPasswordValid = await this.comparePassword(
       data.password,
-      user.password
+      passwordToCompare
     )
 
-    if (!isPasswordValid) {
+    // Only check validity if user exists
+    if (!user || !isPasswordValid) {
       throw new Error('Invalid credentials')
     }
 

@@ -11,15 +11,39 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * POST /api/auth/register
    * Inscription d'un nouvel utilisateur
    * Body: { email, password, name? }
+   * Rate limit: 3 requests per hour (prevent spam accounts)
    */
-  app.post('/register', authController.register.bind(authController))
+  app.post(
+    '/register',
+    {
+      config: {
+        rateLimit: {
+          max: 3,
+          timeWindow: '1 hour',
+        },
+      },
+    },
+    authController.register.bind(authController)
+  )
 
   /**
    * POST /api/auth/login
    * Connexion d'un utilisateur
    * Body: { email, password }
+   * Rate limit: 5 requests per 15 minutes (prevent brute force)
    */
-  app.post('/login', authController.login.bind(authController))
+  app.post(
+    '/login',
+    {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    authController.login.bind(authController)
+  )
 
   /**
    * POST /api/auth/refresh
