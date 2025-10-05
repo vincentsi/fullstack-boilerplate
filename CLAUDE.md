@@ -140,13 +140,51 @@ Apps extend appropriate config:
   └── types/              # TypeScript types & module declarations
   ```
 
-### Frontend (Next.js) - Planned
+### Frontend (Next.js)
 
 - **Framework**: Next.js 14+ with App Router
 - **Styling**: TailwindCSS + shadcn/ui components
-- **Data Fetching**: TanStack Query
-- **Validation**: Zod (shared schemas from backend)
-- **Testing**: Playwright (E2E)
+- **State Management**: TanStack Query (React Query) for server state
+- **Forms**: React Hook Form + Zod validation
+- **HTTP Client**: Axios with interceptors (auto token refresh)
+- **Validation**: Zod schemas (shared with backend)
+- **Icons**: lucide-react
+- **Testing**: Playwright (E2E) - planned
+
+### Frontend Architecture
+
+- **Feature-based Structure**: Organized by domain (auth, dashboard) not by type
+- **Route Groups**: `(auth)` for public routes, `(dashboard)` for protected routes
+- **Provider Pattern**: QueryProvider → AuthProvider → App
+- **Protected Routes**: HOC component for auth-only pages
+- **Modular Structure**:
+  ```
+  apps/frontend/
+  ├── app/
+  │   ├── (auth)/           # Public routes (login, register)
+  │   ├── (dashboard)/      # Protected routes (dashboard, profile)
+  │   ├── layout.tsx        # Root layout with providers
+  │   └── page.tsx          # Home page
+  ├── components/
+  │   ├── ui/               # shadcn/ui components
+  │   ├── auth/             # ProtectedRoute HOC
+  │   ├── forms/            # Reusable forms
+  │   └── layouts/          # Navigation, layouts
+  ├── features/             # Domain logic
+  │   ├── auth/
+  │   └── dashboard/
+  ├── lib/
+  │   ├── api/              # Typed API client (Axios)
+  │   │   ├── client.ts     # Base client with interceptors
+  │   │   └── auth.ts       # Auth API endpoints
+  │   ├── utils/            # Helper functions
+  │   └── validators/       # Zod schemas
+  ├── providers/
+  │   ├── query.provider.tsx    # React Query setup
+  │   └── auth.provider.tsx     # Auth context + queries
+  └── types/
+      └── index.ts          # Shared TypeScript types
+  ```
 
 ## Important Notes
 
@@ -174,7 +212,7 @@ The monorepo foundation is complete with:
 - ✅ Health check endpoint
 - ✅ Authentication system (JWT with bcrypt, refresh tokens)
 - ✅ Auth routes: register, login, refresh, logout, me
-- ⏳ Frontend implementation (Next.js + TailwindCSS) - planned
+- ⏳ Frontend implementation (Next.js + shadcn/ui + React Query) - in progress
 - ⏳ Testing setup - planned
 
 ### Package Scoping
@@ -316,6 +354,290 @@ Backend uses flat config format (`eslint.config.mjs`) for ESLint v9+:
 - Ignores variables starting with `_` (destructuring pattern for unused values)
 - Allows `request.user` augmentation without `any` type warnings
 - TypeScript-first linting with `typescript-eslint`
+
+## Frontend-Specific Patterns
+
+### API Client (Typed Axios with Interceptors)
+
+**NEVER use fetch() directly** - Always use the typed API client from `lib/api/`
+
+#### Base Client Setup (`lib/api/client.ts`)
+
+```typescript
+import axios from 'axios'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+
+export const apiClient = axios.create({
+  baseURL: API_URL,
+  headers: { 'Content-Type': 'application/json' }
+})
+
+// Auto-inject JWT token in ALL requests
+apiClient.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken')
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Auto-refresh token on 401 errors
+apiClient.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    if (error.response?.status === 401) {
+      // Refresh token logic here
+      // Retry original request with new token
+    }
+    return Promise.reject(error)
+  }
+)
+```
+
+**Why this pattern?**
+- ✅ Token automatically added to every request
+- ✅ Refresh token handled transparently (user doesn't get logged out)
+- ✅ Centralized error handling
+- ✅ Single source of truth for API URL
+
+#### API Endpoints (`lib/api/auth.ts`, etc.)
+
+```typescript
+import { apiClient } from './client'
+import type { User } from '@/types'
+
+export type LoginDTO = {
+  email: string
+  password: string
+}
+
+export type AuthResponse = {
+  user: User
+  accessToken: string
+  refreshToken: string
+}
+
+export const authApi = {
+  login: async (data: LoginDTO): Promise<AuthResponse> => {
+    const response = await apiClient.post<AuthResponse>('/auth/login', data)
+    return response.data
+  },
+
+  me: async (): Promise<{ user: User }> => {
+    const response = await apiClient.get<{ user: User }>('/auth/me')
+    return response.data
+  }
+}
+```
+
+**Usage in components:**
+```typescript
+// ✅ GOOD - Typed, centralized, automatic token
+const result = await authApi.login({ email, password })
+
+// ❌ BAD - Manual fetch, no types, repeated code
+const response = await fetch('http://localhost:3001/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password })
+})
+```
+
+### React Query Pattern
+
+Use React Query for ALL server state (data from API):
+
+```typescript
+// ✅ GOOD - React Query handles caching, refetch, loading states
+const { data: user, isLoading } = useQuery({
+  queryKey: ['me'],
+  queryFn: () => authApi.me()
+})
+
+// ✅ GOOD - Mutations with optimistic updates
+const loginMutation = useMutation({
+  mutationFn: authApi.login,
+  onSuccess: (data) => {
+    queryClient.setQueryData(['me'], data.user)
+  }
+})
+
+// ❌ BAD - Manual state management, no caching
+const [user, setUser] = useState(null)
+const [loading, setLoading] = useState(true)
+useEffect(() => {
+  fetch('/auth/me').then(r => r.json()).then(setUser)
+}, [])
+```
+
+**React Query Benefits:**
+- Automatic caching (60s stale time by default)
+- Background refetch
+- Optimistic updates
+- Loading/error states handled
+- No manual useState/useEffect
+
+### Authentication Flow
+
+**Provider hierarchy in `app/layout.tsx`:**
+```typescript
+<QueryProvider>          {/* React Query setup */}
+  <AuthProvider>         {/* Auth context + user state */}
+    {children}
+  </AuthProvider>
+</QueryProvider>
+```
+
+**Auth Provider Pattern (`providers/auth.provider.tsx`):**
+- Uses React Query internally for user data
+- Exposes: `user`, `login()`, `register()`, `logout()`, `isAuthenticated`, `isLoading`
+- Token storage in localStorage (can be switched to httpOnly cookies)
+
+**Usage in components:**
+```typescript
+'use client'
+
+import { useAuth } from '@/providers/auth.provider'
+
+export function ProfilePage() {
+  const { user, logout, isLoading } = useAuth()
+
+  if (isLoading) return <Spinner />
+  if (!user) return null
+
+  return <div>Welcome {user.email}</div>
+}
+```
+
+### Protected Routes Pattern
+
+Use the `ProtectedRoute` HOC for authenticated-only pages:
+
+```typescript
+// app/(dashboard)/layout.tsx
+import { ProtectedRoute } from '@/components/auth/protected-route'
+
+export default function DashboardLayout({ children }) {
+  return (
+    <ProtectedRoute>
+      {children}
+    </ProtectedRoute>
+  )
+}
+```
+
+**How it works:**
+1. Checks `isAuthenticated` from AuthProvider
+2. Shows loading spinner while checking
+3. Redirects to `/login` if not authenticated
+4. Renders children if authenticated
+
+### Form Validation Pattern
+
+Use React Hook Form + Zod for ALL forms:
+
+```typescript
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { loginSchema } from '@/lib/validators/auth'
+
+export function LoginForm() {
+  const form = useForm({
+    resolver: zodResolver(loginSchema),  // Zod schema validation
+    defaultValues: { email: '', password: '' }
+  })
+
+  const onSubmit = async (data) => {
+    // data is typed and validated ✅
+    await authApi.login(data)
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)}>
+        <FormField
+          control={form.control}
+          name="email"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input {...field} />
+              </FormControl>
+              <FormMessage />  {/* Auto error display */}
+            </FormItem>
+          )}
+        />
+      </form>
+    </Form>
+  )
+}
+```
+
+**Why this pattern?**
+- ✅ Type-safe with Zod schemas
+- ✅ Client-side validation before API call
+- ✅ Can reuse same Zod schemas from backend
+- ✅ Minimal re-renders (only changed fields)
+- ✅ Built-in error handling
+
+### shadcn/ui Components
+
+Use shadcn/ui for ALL UI components (not raw Tailwind):
+
+```typescript
+// ✅ GOOD - Accessible, styled, dark mode ready
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+
+<Button>Click me</Button>
+<Input placeholder="Email" />
+
+// ❌ BAD - Manual Tailwind, no accessibility
+<button className="bg-blue-500 px-4 py-2">Click me</button>
+<input className="border p-2" placeholder="Email" />
+```
+
+**Available components** (install as needed):
+```bash
+npx shadcn@latest add button input label card form
+npx shadcn@latest add dropdown-menu dialog alert
+```
+
+### Path Aliases
+
+Frontend uses `@/*` aliases defined in `tsconfig.json`:
+
+```typescript
+import { useAuth } from '@/providers/auth.provider'
+import { authApi } from '@/lib/api/auth'
+import { Button } from '@/components/ui/button'
+import type { User } from '@/types'
+```
+
+Never use relative imports like `../../../providers/auth.provider`
+
+### Environment Variables
+
+Frontend env vars must start with `NEXT_PUBLIC_` to be exposed to the browser:
+
+```env
+# apps/frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:3001  # ← Backend API URL (port 3001, not 3000!)
+```
+
+```typescript
+// Usage
+const apiUrl = process.env.NEXT_PUBLIC_API_URL
+```
+
+**Port explanation:**
+- Frontend (Next.js) runs on `http://localhost:3000` ← User visits this
+- Backend (Fastify) runs on `http://localhost:3001` ← Frontend calls this API
+- `NEXT_PUBLIC_API_URL` points to **backend** (3001) so frontend can fetch data
+
+**Security note:** Only prefix with `NEXT_PUBLIC_` if it's safe to expose to the browser. Server-only secrets should NOT have this prefix.
 
 ## Workflow modification
 
