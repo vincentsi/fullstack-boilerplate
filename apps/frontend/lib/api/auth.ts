@@ -14,45 +14,49 @@ export type LoginDTO = {
 
 export type AuthResponse = {
   user: User
-  accessToken: string
-  refreshToken: string
 }
 
 /**
  * API d'authentification avec types stricts
+ * Les tokens sont stockés en httpOnly cookies par le backend
  */
 export const authApi = {
   /**
    * Créer un nouveau compte
    */
   register: async (data: RegisterDTO): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/api/auth/register', data)
-    return response.data
+    const response = await apiClient.post<{ success: boolean; data: AuthResponse }>(
+      '/api/auth/register',
+      data
+    )
+    return response.data.data
   },
 
   /**
    * Se connecter
    */
   login: async (data: LoginDTO): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/api/auth/login', data)
-    return response.data
+    const response = await apiClient.post<{ success: boolean; data: AuthResponse }>(
+      '/api/auth/login',
+      data
+    )
+    return response.data.data
   },
 
   /**
    * Récupérer l'utilisateur actuel
    */
   me: async (): Promise<{ user: User }> => {
-    const response = await apiClient.get<{ user: User }>('/api/auth/me')
-    return response.data
+    const response = await apiClient.get<{ success: boolean; data: { user: User } }>(
+      '/api/auth/me'
+    )
+    return response.data.data
   },
 
   /**
-   * Refresh le token d'accès
+   * Se déconnecter et révoquer les tokens
    */
-  refresh: async (refreshToken: string): Promise<AuthResponse> => {
-    const response = await apiClient.post<AuthResponse>('/api/auth/refresh', {
-      refreshToken,
-    })
-    return response.data
+  logout: async (): Promise<void> => {
+    await apiClient.post('/api/auth/logout')
   },
 }

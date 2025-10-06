@@ -29,10 +29,7 @@ export async function registerSecurityMiddlewares(
 
   // CORS - Allow frontend to communicate with backend
   await app.register(cors, {
-    origin:
-      env.NODE_ENV === 'production'
-        ? ['https://your-production-domain.com'] // Remplacer en production
-        : ['http://localhost:3000', 'http://localhost:3001'], // URLs frontend en dev
+    origin: env.FRONTEND_URL.split(','), // Support multiple origins (comma-separated)
     credentials: true, // Allow cookies
   })
 

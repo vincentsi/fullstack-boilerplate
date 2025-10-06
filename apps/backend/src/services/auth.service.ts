@@ -56,6 +56,21 @@ export class AuthService {
   }
 
   /**
+   * Stocke un refresh token en DB
+   * @param token - Refresh token à stocker
+   * @param userId - ID de l'utilisateur
+   */
+  private async storeRefreshToken(token: string, userId: string): Promise<void> {
+    await prisma.refreshToken.create({
+      data: {
+        token,
+        userId,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 jours
+      },
+    })
+  }
+
+  /**
    * Vérifie un access token
    * @param token - JWT access token
    * @returns Payload du token si valide
@@ -146,6 +161,9 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user.id)
     const refreshToken = this.generateRefreshToken(user.id)
 
+    // Stocker le refresh token en DB
+    await this.storeRefreshToken(refreshToken, user.id)
+
     // Retourner l'utilisateur sans le password
     const { password: _, ...userWithoutPassword } = user
 
@@ -201,6 +219,9 @@ export class AuthService {
     const accessToken = this.generateAccessToken(user.id)
     const refreshToken = this.generateRefreshToken(user.id)
 
+    // Stocker le refresh token en DB
+    await this.storeRefreshToken(refreshToken, user.id)
+
     // Retourner l'utilisateur sans le password
     const { password: _, ...userWithoutPassword } = user
 
@@ -229,25 +250,73 @@ export class AuthService {
     accessToken: string
     refreshToken: string
   }> {
-    // Vérifier le refresh token
+    // Vérifier le refresh token JWT
     const payload = this.verifyRefreshToken(refreshToken)
 
-    // Vérifier que l'utilisateur existe toujours
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
+    // Vérifier le token en DB (pas révoqué, pas expiré)
+    const storedToken = await prisma.refreshToken.findUnique({
+      where: { token: refreshToken },
+      include: { user: true },
     })
 
-    if (!user) {
+    if (!storedToken || storedToken.revoked || storedToken.expiresAt < new Date()) {
+      throw new Error('Invalid or expired refresh token')
+    }
+
+    // Vérifier que l'utilisateur existe toujours
+    if (!storedToken.user) {
       throw new Error('User not found')
     }
 
+    // Révoquer l'ancien token (rotation)
+    await prisma.refreshToken.update({
+      where: { id: storedToken.id },
+      data: { revoked: true },
+    })
+
     // Générer de nouveaux tokens
-    const newAccessToken = this.generateAccessToken(user.id)
-    const newRefreshToken = this.generateRefreshToken(user.id)
+    const newAccessToken = this.generateAccessToken(storedToken.userId)
+    const newRefreshToken = this.generateRefreshToken(storedToken.userId)
+
+    // Stocker le nouveau refresh token en DB
+    await this.storeRefreshToken(newRefreshToken, storedToken.userId)
 
     return {
       accessToken: newAccessToken,
       refreshToken: newRefreshToken,
+    }
+  }
+
+  /**
+   * Déconnecte un utilisateur en révoquant ses refresh tokens
+   * @param userId - ID de l'utilisateur
+   * @param refreshToken - Token spécifique à révoquer (optionnel)
+   *
+   * @example
+   * ```typescript
+   * // Révoquer un token spécifique
+   * await authService.logout(userId, 'eyJhbGc...')
+   *
+   * // Révoquer tous les tokens de l'utilisateur
+   * await authService.logout(userId)
+   * ```
+   */
+  async logout(userId: string, refreshToken?: string): Promise<void> {
+    if (refreshToken) {
+      // Révoquer le token spécifique
+      await prisma.refreshToken.updateMany({
+        where: {
+          userId,
+          token: refreshToken,
+        },
+        data: { revoked: true },
+      })
+    } else {
+      // Révoquer tous les tokens de l'utilisateur
+      await prisma.refreshToken.updateMany({
+        where: { userId },
+        data: { revoked: true },
+      })
     }
   }
 

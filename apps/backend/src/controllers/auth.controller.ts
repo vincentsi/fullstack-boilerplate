@@ -32,9 +32,26 @@ export class AuthController {
       // Log successful registration
       request.log.info({ email: data.email }, 'New user registered')
 
+      // Stocker les tokens en httpOnly cookies
+      reply.setCookie('accessToken', result.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60, // 15 minutes
+        path: '/',
+      })
+
+      reply.setCookie('refreshToken', result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60, // 7 jours
+        path: '/',
+      })
+
       return reply.status(201).send({
         success: true,
-        data: result,
+        data: { user: result.user },
       })
     } catch (error) {
       if (error instanceof Error) {
@@ -89,9 +106,26 @@ export class AuthController {
       // Log successful login
       request.log.info({ email: data.email }, 'User logged in successfully')
 
+      // Stocker les tokens en httpOnly cookies
+      reply.setCookie('accessToken', result.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60, // 15 minutes
+        path: '/',
+      })
+
+      reply.setCookie('refreshToken', result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60, // 7 jours
+        path: '/',
+      })
+
       return reply.status(200).send({
         success: true,
-        data: result,
+        data: { user: result.user },
       })
     } catch (error) {
       if (error instanceof Error) {
@@ -132,20 +166,41 @@ export class AuthController {
    * POST /api/auth/refresh
    * Rafraîchit l'access token
    */
-  async refresh(
-    request: FastifyRequest<{ Body: RefreshTokenDTO }>,
-    reply: FastifyReply
-  ) {
+  async refresh(request: FastifyRequest, reply: FastifyReply) {
     try {
-      // Valider les données
-      const { refreshToken } = refreshTokenSchema.parse(request.body)
+      // Récupérer le refresh token depuis les cookies
+      const refreshToken = request.cookies.refreshToken
+
+      if (!refreshToken) {
+        return reply.status(401).send({
+          success: false,
+          error: 'No refresh token provided',
+        })
+      }
 
       // Rafraîchir les tokens
       const result = await authService.refresh(refreshToken)
 
+      // Stocker les nouveaux tokens en cookies
+      reply.setCookie('accessToken', result.accessToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 15 * 60, // 15 minutes
+        path: '/',
+      })
+
+      reply.setCookie('refreshToken', result.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 7 * 24 * 60 * 60, // 7 jours
+        path: '/',
+      })
+
       return reply.status(200).send({
         success: true,
-        data: result,
+        message: 'Tokens refreshed successfully',
       })
     } catch (error) {
       if (error instanceof Error) {
@@ -157,15 +212,6 @@ export class AuthController {
           return reply.status(401).send({
             success: false,
             error: 'Invalid or expired refresh token',
-          })
-        }
-
-        // Erreur de validation Zod
-        if (error.name === 'ZodError') {
-          return reply.status(400).send({
-            success: false,
-            error: 'Validation error',
-            details: error,
           })
         }
       }
@@ -181,16 +227,34 @@ export class AuthController {
 
   /**
    * POST /api/auth/logout
-   * Déconnecte un utilisateur (côté client, invalider les tokens)
+   * Déconnecte un utilisateur et révoque les refresh tokens
    */
   async logout(request: FastifyRequest, reply: FastifyReply) {
-    // Note: Avec JWT stateless, le logout est géré côté client
-    // Le client doit supprimer les tokens du localStorage/cookies
-    // Pour un vrai logout serveur, il faudrait une blacklist de tokens
-    return reply.status(200).send({
-      success: true,
-      message: 'Logged out successfully',
-    })
+    try {
+      // Récupérer userId et refreshToken
+      const userId = request.user?.userId
+      const refreshToken = request.cookies.refreshToken
+
+      if (userId) {
+        // Révoquer le token spécifique ou tous les tokens de l'utilisateur
+        await authService.logout(userId, refreshToken)
+      }
+
+      // Supprimer les cookies
+      reply.clearCookie('accessToken', { path: '/' })
+      reply.clearCookie('refreshToken', { path: '/' })
+
+      return reply.status(200).send({
+        success: true,
+        message: 'Logged out successfully',
+      })
+    } catch (error) {
+      request.log.error(error)
+      return reply.status(500).send({
+        success: false,
+        error: 'Internal server error',
+      })
+    }
   }
 
   /**

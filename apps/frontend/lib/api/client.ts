@@ -1,65 +1,91 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios'
 
-// URL de l'API depuis env
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+// URL de l'API depuis env (obligatoire, pas de fallback)
+const API_URL = process.env.NEXT_PUBLIC_API_URL
+if (!API_URL) {
+  throw new Error('❌ NEXT_PUBLIC_API_URL must be defined in .env.local')
+}
 
 /**
  * Client Axios configuré avec intercepteurs
- * - Ajoute automatiquement le token JWT
+ * - Utilise httpOnly cookies pour les tokens (sécurité XSS)
  * - Gère le refresh token si expiré
  * - Centralise les erreurs
  */
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_URL,
+  timeout: 10000, // 10s timeout
+  withCredentials: true, // Envoie cookies automatiquement
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
 // ========================================
-// INTERCEPTEUR REQUEST: Ajoute le token
+// INTERCEPTEUR RESPONSE: Refresh token avec queue pattern (évite race condition)
 // ========================================
-apiClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem('accessToken')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+let isRefreshing = false
+let refreshSubscribers: Array<() => void> = []
 
-// ========================================
-// INTERCEPTEUR RESPONSE: Refresh token
-// ========================================
+const onRefreshed = () => {
+  refreshSubscribers.forEach((callback) => callback())
+  refreshSubscribers = []
+}
+
+const addRefreshSubscriber = (callback: () => void) => {
+  refreshSubscribers.push(callback)
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config
 
-    // Si 401 et qu'on a un refresh token, essayer de refresh
-    if (error.response?.status === 401 && originalRequest) {
-      const refreshToken = localStorage.getItem('refreshToken')
-
-      if (refreshToken) {
-        try {
-          // Appeler l'endpoint de refresh
-          const { data } = await axios.post(`${API_URL}/api/auth/refresh`, {
-            refreshToken,
-          })
-
-          // Sauvegarder les nouveaux tokens
-          localStorage.setItem('accessToken', data.accessToken)
-          localStorage.setItem('refreshToken', data.refreshToken)
-
-          // Réessayer la requête originale avec le nouveau token
-          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`
-          return apiClient(originalRequest)
-        } catch {
-          // Refresh failed, logout l'utilisateur
-          localStorage.removeItem('accessToken')
-          localStorage.removeItem('refreshToken')
+    // Si 401 et pas déjà en train de refresh
+    if (error.response?.status === 401 && originalRequest && !isRefreshing) {
+      // Éviter boucle infinie sur /refresh ou /login
+      if (originalRequest.url?.includes('/auth/refresh') ||
+          originalRequest.url?.includes('/auth/login')) {
+        // Redirect vers login si refresh échoue
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
           window.location.href = '/login'
         }
+        return Promise.reject(error)
       }
+
+      if (!isRefreshing) {
+        isRefreshing = true
+
+        try {
+          // Appeler l'endpoint de refresh (token envoyé automatiquement via cookies)
+          await axios.post(
+            `${API_URL}/api/auth/refresh`,
+            {},
+            { withCredentials: true }
+          )
+
+          // Token refreshé avec succès
+          isRefreshing = false
+          onRefreshed()
+
+          // Réessayer la requête originale
+          return apiClient(originalRequest)
+        } catch {
+          // Refresh failed, redirect vers login
+          isRefreshing = false
+          if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+            window.location.href = '/login'
+          }
+          return Promise.reject(error)
+        }
+      }
+
+      // Si déjà en train de refresh, attendre qu'il se termine
+      return new Promise((resolve) => {
+        addRefreshSubscriber(() => {
+          resolve(apiClient(originalRequest))
+        })
+      })
     }
 
     return Promise.reject(error)

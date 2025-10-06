@@ -1,5 +1,6 @@
 import Fastify from 'fastify'
 import type { FastifyInstance } from 'fastify'
+import cookie from '@fastify/cookie'
 import { env } from '@/config/env'
 import { registerSecurityMiddlewares } from '@/middlewares/security.middleware'
 import { errorHandler } from '@/middlewares/error-handler.middleware'
@@ -32,6 +33,9 @@ export async function createApp(): Promise<FastifyInstance> {
           : undefined,
     },
   })
+
+  // Register cookie plugin
+  await app.register(cookie)
 
   // Register security middlewares
   await registerSecurityMiddlewares(app)

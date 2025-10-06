@@ -26,19 +26,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { data, isLoading } = useQuery({
     queryKey: ['me'],
     queryFn: async () => {
-      const token = localStorage.getItem('accessToken')
-      if (!token) return null
-
       try {
         const response = await authApi.me()
         return response.user
       } catch {
-        localStorage.removeItem('accessToken')
-        localStorage.removeItem('refreshToken')
         return null
       }
     },
     enabled: isInitialized,
+    staleTime: 5 * 60 * 1000, // 5 minutes pour user data
   })
 
   useEffect(() => {
@@ -49,8 +45,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginMutation = useMutation({
     mutationFn: authApi.login,
     onSuccess: (data) => {
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
+      // Tokens stockés en httpOnly cookies par le backend
       queryClient.setQueryData(['me'], data.user)
       router.push('/dashboard')
     },
@@ -60,16 +55,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const registerMutation = useMutation({
     mutationFn: authApi.register,
     onSuccess: (data) => {
-      localStorage.setItem('accessToken', data.accessToken)
-      localStorage.setItem('refreshToken', data.refreshToken)
+      // Tokens stockés en httpOnly cookies par le backend
       queryClient.setQueryData(['me'], data.user)
       router.push('/dashboard')
     },
   })
 
-  const logout = () => {
-    localStorage.removeItem('accessToken')
-    localStorage.removeItem('refreshToken')
+  const logout = async () => {
+    try {
+      // Appeler le logout backend pour révoquer les tokens
+      await authApi.logout()
+    } catch {
+      // Ignorer les erreurs de logout
+    }
     queryClient.setQueryData(['me'], null)
     queryClient.clear()
     router.push('/login')

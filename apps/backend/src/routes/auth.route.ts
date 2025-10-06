@@ -48,9 +48,21 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   /**
    * POST /api/auth/refresh
    * Rafraîchir l'access token
-   * Body: { refreshToken }
+   * Cookie: refreshToken (httpOnly)
+   * Rate limit: 10 requests per 15 minutes (prevent abuse)
    */
-  app.post('/refresh', authController.refresh.bind(authController))
+  app.post(
+    '/refresh',
+    {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: '15 minutes',
+        },
+      },
+    },
+    authController.refresh.bind(authController)
+  )
 
   /**
    * POST /api/auth/logout

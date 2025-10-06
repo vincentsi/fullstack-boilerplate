@@ -25,6 +25,9 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z
     .string()
     .min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+
+  // Frontend URL for CORS
+  FRONTEND_URL: z.string().url().default('http://localhost:3000'),
 })
 
 /**
