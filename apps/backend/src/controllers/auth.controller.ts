@@ -3,10 +3,8 @@ import { authService } from '@/services/auth.service'
 import {
   registerSchema,
   loginSchema,
-  refreshTokenSchema,
   type RegisterDTO,
   type LoginDTO,
-  type RefreshTokenDTO,
 } from '@/schemas/auth.schema'
 
 /**

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken'
 import { env } from '@/config/env'
 import { prisma } from '@/config/prisma'
 import type { RegisterDTO, LoginDTO } from '@/schemas/auth.schema'
+import { VerificationService } from './verification.service'
 
 /**
  * Service d'authentification
@@ -15,7 +16,7 @@ export class AuthService {
    * @param password - Password en clair
    * @returns Password hashé
    */
-  private async hashPassword(password: string): Promise<string> {
+  async hashPassword(password: string): Promise<string> {
     const saltRounds = 10
     return bcrypt.hash(password, saltRounds)
   }
@@ -154,8 +155,12 @@ export class AuthService {
         email: data.email,
         password: hashedPassword,
         name: data.name,
+        emailVerified: false, // Email non vérifié par défaut
       },
     })
+
+    // Envoyer l'email de vérification
+    await VerificationService.createVerificationToken(user.id, user.email)
 
     // Générer les tokens
     const accessToken = this.generateAccessToken(user.id)
@@ -251,7 +256,7 @@ export class AuthService {
     refreshToken: string
   }> {
     // Vérifier le refresh token JWT
-    const payload = this.verifyRefreshToken(refreshToken)
+    this.verifyRefreshToken(refreshToken)
 
     // Vérifier le token en DB (pas révoqué, pas expiré)
     const storedToken = await prisma.refreshToken.findUnique({

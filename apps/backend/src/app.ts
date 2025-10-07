@@ -6,6 +6,9 @@ import { registerSecurityMiddlewares } from '@/middlewares/security.middleware'
 import { errorHandler } from '@/middlewares/error-handler.middleware'
 import { healthRoutes } from '@/routes/health.route'
 import { authRoutes } from '@/routes/auth.route'
+import { verificationRoutes } from '@/routes/verification.route'
+import { passwordResetRoutes } from '@/routes/password-reset.route'
+import { adminRoutes } from '@/routes/admin.route'
 
 /**
  * Create and configure Fastify application
@@ -46,6 +49,9 @@ export async function createApp(): Promise<FastifyInstance> {
   // Register routes
   await app.register(healthRoutes, { prefix: '/api' })
   await app.register(authRoutes, { prefix: '/api/auth' })
+  await app.register(passwordResetRoutes, { prefix: '/api/auth' })
+  await app.register(verificationRoutes, { prefix: '/api/verification' })
+  await app.register(adminRoutes, { prefix: '/api/admin' })
 
   return app
 }
