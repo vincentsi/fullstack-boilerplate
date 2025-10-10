@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { requireRole } from '../middlewares/rbac.middleware'
 import { prisma } from '../config/prisma'
+import { CleanupService } from '../services/cleanup.service'
 
 type Role = 'USER' | 'ADMIN' | 'MODERATOR'
 
@@ -19,28 +20,61 @@ export async function adminRoutes(fastify: FastifyInstance) {
     fastify.addHook('preHandler', requireRole('ADMIN'))
 
     /**
-     * Liste tous les utilisateurs
-     * GET /api/admin/users
+     * Liste tous les utilisateurs avec pagination
+     * GET /api/admin/users?page=1&limit=20
      */
-    fastify.get('/users', async (request, reply) => {
-      const users = await prisma.user.findMany({
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          emailVerified: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      })
+    fastify.get<{
+      Querystring: { page?: string; limit?: string }
+    }>('/users', async (request, reply) => {
+      // Paramètres de pagination avec valeurs par défaut
+      const page = parseInt(request.query.page || '1', 10)
+      const limit = Math.min(parseInt(request.query.limit || '20', 10), 100) // Max 100 par page
+      const skip = (page - 1) * limit
+
+      // Validation
+      if (page < 1 || limit < 1) {
+        return reply.status(400).send({
+          success: false,
+          error: 'Invalid pagination parameters',
+        })
+      }
+
+      // Récupérer les utilisateurs paginés
+      const [users, totalCount] = await Promise.all([
+        prisma.user.findMany({
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            emailVerified: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+          skip,
+          take: limit,
+        }),
+        prisma.user.count(),
+      ])
+
+      const totalPages = Math.ceil(totalCount / limit)
 
       reply.send({
         success: true,
-        data: { users },
+        data: {
+          users,
+          pagination: {
+            page,
+            limit,
+            totalCount,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+          },
+        },
       })
     })
 
@@ -105,6 +139,19 @@ export async function adminRoutes(fastify: FastifyInstance) {
       reply.send({
         success: true,
         message: 'Utilisateur supprimé',
+      })
+    })
+
+    /**
+     * Déclenche un nettoyage manuel des tokens expirés
+     * POST /api/admin/cleanup-tokens
+     */
+    fastify.post('/cleanup-tokens', async (request, reply) => {
+      await CleanupService.runManualCleanup(fastify)
+
+      reply.send({
+        success: true,
+        message: 'Nettoyage des tokens exécuté avec succès',
       })
     })
   })

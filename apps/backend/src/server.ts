@@ -1,6 +1,7 @@
 import { createApp } from './app'
 import { env } from '@/config/env'
 import { disconnectPrisma } from '@/config/prisma'
+import { CleanupService } from '@/services/cleanup.service'
 import type { FastifyInstance } from 'fastify'
 
 /**
@@ -20,6 +21,9 @@ async function start() {
     // Start server
     const port = Number(env.PORT)
     await app.listen({ port, host: '0.0.0.0' })
+
+    // Start automated cleanup job
+    CleanupService.startCleanupJob(app)
 
     console.log(`🚀 Server ready at http://localhost:${port}`)
     console.log(`📊 Health check: http://localhost:${port}/api/health`)

@@ -22,6 +22,33 @@ export const apiClient: AxiosInstance = axios.create({
 })
 
 // ========================================
+// INTERCEPTEUR REQUEST: Attacher token CSRF pour protection
+// ========================================
+apiClient.interceptors.request.use(
+  (config) => {
+    // Ajouter token CSRF sur toutes les requêtes mutantes (POST, PUT, PATCH, DELETE)
+    const isMutatingRequest = ['post', 'put', 'patch', 'delete'].includes(
+      config.method?.toLowerCase() || ''
+    )
+
+    if (isMutatingRequest && typeof document !== 'undefined') {
+      // Récupérer le token depuis le cookie csrfToken
+      const csrfToken = document.cookie
+        .split('; ')
+        .find((row) => row.startsWith('csrfToken='))
+        ?.split('=')[1]
+
+      if (csrfToken) {
+        config.headers['X-CSRF-Token'] = csrfToken
+      }
+    }
+
+    return config
+  },
+  (error) => Promise.reject(error)
+)
+
+// ========================================
 // INTERCEPTEUR RESPONSE: Refresh token avec queue pattern (évite race condition)
 // ========================================
 let isRefreshing = false

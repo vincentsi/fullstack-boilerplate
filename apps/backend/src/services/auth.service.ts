@@ -37,10 +37,11 @@ export class AuthService {
   /**
    * Génère un access token JWT
    * @param userId - ID de l'utilisateur
+   * @param role - Rôle de l'utilisateur (pour RBAC sans requête DB)
    * @returns Access token (expire dans 15 minutes)
    */
-  private generateAccessToken(userId: string): string {
-    return jwt.sign({ userId }, env.JWT_SECRET, {
+  private generateAccessToken(userId: string, role: string): string {
+    return jwt.sign({ userId, role }, env.JWT_SECRET, {
       expiresIn: '15m',
     })
   }
@@ -74,7 +75,7 @@ export class AuthService {
   /**
    * Vérifie un access token
    * @param token - JWT access token
-   * @returns Payload du token si valide
+   * @returns Payload du token si valide (userId et role)
    * @throws Error si token invalide ou expiré
    *
    * @example
@@ -82,14 +83,15 @@ export class AuthService {
    * try {
    *   const payload = authService.verifyAccessToken('eyJhbGc...')
    *   console.log(payload.userId)  // "clxxx..."
+   *   console.log(payload.role)    // "USER"
    * } catch (error) {
    *   console.error('Invalid token')
    * }
    * ```
    */
-  verifyAccessToken(token: string): { userId: string } {
+  verifyAccessToken(token: string): { userId: string; role: string } {
     try {
-      const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string }
+      const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string; role: string }
       return payload
     } catch {
       throw new Error('Invalid or expired access token')
@@ -163,7 +165,7 @@ export class AuthService {
     await VerificationService.createVerificationToken(user.id, user.email)
 
     // Générer les tokens
-    const accessToken = this.generateAccessToken(user.id)
+    const accessToken = this.generateAccessToken(user.id, user.role)
     const refreshToken = this.generateRefreshToken(user.id)
 
     // Stocker le refresh token en DB
@@ -221,7 +223,7 @@ export class AuthService {
     }
 
     // Générer les tokens
-    const accessToken = this.generateAccessToken(user.id)
+    const accessToken = this.generateAccessToken(user.id, user.role)
     const refreshToken = this.generateRefreshToken(user.id)
 
     // Stocker le refresh token en DB
@@ -280,7 +282,7 @@ export class AuthService {
     })
 
     // Générer de nouveaux tokens
-    const newAccessToken = this.generateAccessToken(storedToken.userId)
+    const newAccessToken = this.generateAccessToken(storedToken.userId, storedToken.user.role)
     const newRefreshToken = this.generateRefreshToken(storedToken.userId)
 
     // Stocker le nouveau refresh token en DB

@@ -12,5 +12,17 @@ export async function verificationRoutes(fastify: FastifyInstance) {
   fastify.get('/verify-email', controller.verifyEmail.bind(controller))
 
   // POST /api/verification/resend-verification
-  fastify.post('/resend-verification', controller.resendVerification.bind(controller))
+  // Rate limit: 3 requests per hour (prevent spam)
+  fastify.post(
+    '/resend-verification',
+    {
+      config: {
+        rateLimit: {
+          max: 3,
+          timeWindow: '1 hour',
+        },
+      },
+    },
+    controller.resendVerification.bind(controller)
+  )
 }

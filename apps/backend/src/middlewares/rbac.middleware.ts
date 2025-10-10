@@ -1,10 +1,11 @@
 import { FastifyRequest, FastifyReply } from 'fastify'
-import { prisma } from '../config/prisma'
 
 type Role = 'USER' | 'ADMIN' | 'MODERATOR'
 
 /**
- * Middleware pour vérifier les rôles des utilisateurs (RBAC)
+ * Middleware pour vérifier les rôles des utilisateurs (RBAC optimisé)
+ * Utilise le rôle stocké dans le JWT (pas de requête DB)
+ *
  * @param allowedRoles - Liste des rôles autorisés à accéder à la route
  * @returns Middleware Fastify
  *
@@ -20,43 +21,26 @@ type Role = 'USER' | 'ADMIN' | 'MODERATOR'
 export function requireRole(...allowedRoles: Role[]) {
   return async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      // L'userId doit être disponible grâce à authMiddleware
+      // Le role doit être disponible grâce à authMiddleware (depuis JWT)
       const userId = request.user?.userId
+      const userRole = request.user?.role
 
-      if (!userId) {
+      if (!userId || !userRole) {
         return reply.status(401).send({
           success: false,
           error: 'Non authentifié',
         })
       }
 
-      // Récupérer le rôle de l'utilisateur depuis la base de données
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true },
-      })
-
-      if (!user) {
-        return reply.status(404).send({
-          success: false,
-          error: 'Utilisateur introuvable',
-        })
-      }
-
       // Vérifier si le rôle de l'utilisateur est dans la liste des rôles autorisés
-      if (!allowedRoles.includes(user.role as Role)) {
+      // Performance: 0 requête DB, tout est dans le JWT
+      if (!allowedRoles.includes(userRole as Role)) {
         return reply.status(403).send({
           success: false,
           error: 'Permissions insuffisantes',
           required: allowedRoles,
-          current: user.role,
+          current: userRole,
         })
-      }
-
-      // Ajouter le rôle à la request pour une utilisation ultérieure
-      request.user = {
-        userId: userId,
-        role: user.role as Role,
       }
     } catch {
       return reply.status(500).send({

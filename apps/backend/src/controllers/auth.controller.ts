@@ -6,6 +6,7 @@ import {
   type RegisterDTO,
   type LoginDTO,
 } from '@/schemas/auth.schema'
+import { CsrfService } from '@/services/csrf.service'
 
 /**
  * Controller d'authentification
@@ -44,6 +45,16 @@ export class AuthController {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60, // 7 jours
+        path: '/',
+      })
+
+      // Générer et stocker token CSRF
+      const csrfToken = await CsrfService.generateToken(result.user.id)
+      reply.setCookie('csrfToken', csrfToken, {
+        httpOnly: false, // Accessible par JS pour être envoyé en header
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60, // 1 heure
         path: '/',
       })
 
@@ -118,6 +129,16 @@ export class AuthController {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
         maxAge: 7 * 24 * 60 * 60, // 7 jours
+        path: '/',
+      })
+
+      // Générer et stocker token CSRF
+      const csrfToken = await CsrfService.generateToken(result.user.id)
+      reply.setCookie('csrfToken', csrfToken, {
+        httpOnly: false, // Accessible par JS pour être envoyé en header
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 60 * 60, // 1 heure
         path: '/',
       })
 

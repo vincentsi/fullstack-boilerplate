@@ -1,6 +1,8 @@
 import type { FastifyRequest, FastifyReply } from 'fastify'
 import { authService } from '@/services/auth.service'
 
+type Role = 'USER' | 'ADMIN' | 'MODERATOR'
+
 /**
  * Middleware d'authentification JWT
  * Vérifie le token dans le header Authorization et injecte userId dans request.user
@@ -57,8 +59,8 @@ export async function authMiddleware(
     // Vérifier le token
     const payload = authService.verifyAccessToken(token)
 
-    // Injecter userId dans request pour les handlers
-    request.user = { userId: payload.userId }
+    // Injecter userId et role dans request pour les handlers (RBAC optimisé)
+    request.user = { userId: payload.userId, role: payload.role as Role }
   } catch (error) {
     if (error instanceof Error) {
       return reply.status(401).send({

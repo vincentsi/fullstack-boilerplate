@@ -4,6 +4,7 @@ import cookie from '@fastify/cookie'
 import { env } from '@/config/env'
 import { registerSecurityMiddlewares } from '@/middlewares/security.middleware'
 import { errorHandler } from '@/middlewares/error-handler.middleware'
+import { csrfMiddleware } from '@/middlewares/csrf.middleware'
 import { healthRoutes } from '@/routes/health.route'
 import { authRoutes } from '@/routes/auth.route'
 import { verificationRoutes } from '@/routes/verification.route'
@@ -42,6 +43,9 @@ export async function createApp(): Promise<FastifyInstance> {
 
   // Register security middlewares
   await registerSecurityMiddlewares(app)
+
+  // Register CSRF protection middleware globally
+  app.addHook('preHandler', csrfMiddleware)
 
   // Register global error handler
   app.setErrorHandler(errorHandler)
