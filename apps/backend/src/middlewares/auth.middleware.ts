@@ -59,8 +59,15 @@ export async function authMiddleware(
     // Vérifier le token
     const payload = authService.verifyAccessToken(token)
 
-    // Injecter userId et role dans request pour les handlers (RBAC optimisé)
-    request.user = { userId: payload.userId, role: payload.role as Role }
+    // Récupérer l'email depuis la DB (nécessaire pour Stripe)
+    const user = await authService.getCurrentUser(payload.userId)
+
+    // Injecter userId, role et email dans request pour les handlers
+    request.user = {
+      userId: payload.userId,
+      role: payload.role as Role,
+      email: user.email,
+    }
   } catch (error) {
     if (error instanceof Error) {
       return reply.status(401).send({

@@ -28,6 +28,11 @@ const envSchema = z.object({
 
   // Frontend URL for CORS
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
+
+  // Stripe
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
 })
 
 /**

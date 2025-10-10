@@ -51,12 +51,13 @@ export function requireRole(...allowedRoles: Role[]) {
   }
 }
 
-// Étendre le type FastifyRequest pour inclure le rôle
+// Étendre le type FastifyRequest pour inclure le rôle et l'email
 declare module 'fastify' {
   interface FastifyRequest {
     user?: {
       userId: string
       role?: Role
+      email?: string
     }
   }
 }

@@ -10,6 +10,8 @@ import { authRoutes } from '@/routes/auth.route'
 import { verificationRoutes } from '@/routes/verification.route'
 import { passwordResetRoutes } from '@/routes/password-reset.route'
 import { adminRoutes } from '@/routes/admin.route'
+import { stripeRoutes } from '@/routes/stripe.route'
+import { premiumRoutes } from '@/routes/premium.route'
 
 /**
  * Create and configure Fastify application
@@ -56,6 +58,8 @@ export async function createApp(): Promise<FastifyInstance> {
   await app.register(passwordResetRoutes, { prefix: '/api/auth' })
   await app.register(verificationRoutes, { prefix: '/api/verification' })
   await app.register(adminRoutes, { prefix: '/api/admin' })
+  await app.register(stripeRoutes, { prefix: '/api/stripe' })
+  await app.register(premiumRoutes, { prefix: '/api/premium' })
 
   return app
 }
