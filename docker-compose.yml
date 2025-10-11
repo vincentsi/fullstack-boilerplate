@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: boilerplate-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: boilerplate_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - boilerplate-network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: boilerplate-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - boilerplate-network
+    command: redis-server --appendonly yes
+
+  # Fastify Backend
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: boilerplate-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/boilerplate_dev
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-changeme-dev-secret-min-32-chars-required-here}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-changeme-dev-refresh-secret-min-32-chars}
+      FRONTEND_URL: http://localhost:3000
+      # Stripe (optional)
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    ports:
+      - "3001:3001"
+    restart: unless-stopped
+    networks:
+      - boilerplate-network
+    # Run migrations on startup
+    command: sh -c "npx prisma migrate deploy && npm start"
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:3001
+    container_name: boilerplate-frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - boilerplate-network
+
+networks:
+  boilerplate-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

@@ -12,6 +12,13 @@ import { VerificationService } from './verification.service'
  */
 export class AuthService {
   /**
+   * Dummy hash pour timing attack protection
+   * Utilisé quand l'utilisateur n'existe pas pour garantir un temps de réponse constant
+   * Hash bcrypt valide de "dummy-password-for-timing-attack-protection"
+   */
+  private static readonly DUMMY_HASH = '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'
+
+  /**
    * Hash un password avec bcrypt
    * @param password - Password en clair
    * @returns Password hashé
@@ -38,10 +45,11 @@ export class AuthService {
    * Génère un access token JWT
    * @param userId - ID de l'utilisateur
    * @param role - Rôle de l'utilisateur (pour RBAC sans requête DB)
+   * @param email - Email de l'utilisateur (pour Stripe sans requête DB)
    * @returns Access token (expire dans 15 minutes)
    */
-  private generateAccessToken(userId: string, role: string): string {
-    return jwt.sign({ userId, role }, env.JWT_SECRET, {
+  private generateAccessToken(userId: string, role: string, email: string): string {
+    return jwt.sign({ userId, role, email }, env.JWT_SECRET, {
       expiresIn: '15m',
     })
   }
@@ -75,7 +83,7 @@ export class AuthService {
   /**
    * Vérifie un access token
    * @param token - JWT access token
-   * @returns Payload du token si valide (userId et role)
+   * @returns Payload du token si valide (userId, role, email)
    * @throws Error si token invalide ou expiré
    *
    * @example
@@ -84,14 +92,19 @@ export class AuthService {
    *   const payload = authService.verifyAccessToken('eyJhbGc...')
    *   console.log(payload.userId)  // "clxxx..."
    *   console.log(payload.role)    // "USER"
+   *   console.log(payload.email)   // "user@example.com"
    * } catch (error) {
    *   console.error('Invalid token')
    * }
    * ```
    */
-  verifyAccessToken(token: string): { userId: string; role: string } {
+  verifyAccessToken(token: string): { userId: string; role: string; email: string } {
     try {
-      const payload = jwt.verify(token, env.JWT_SECRET) as { userId: string; role: string }
+      const payload = jwt.verify(token, env.JWT_SECRET) as {
+        userId: string
+        role: string
+        email: string
+      }
       return payload
     } catch {
       throw new Error('Invalid or expired access token')
@@ -165,7 +178,7 @@ export class AuthService {
     await VerificationService.createVerificationToken(user.id, user.email)
 
     // Générer les tokens
-    const accessToken = this.generateAccessToken(user.id, user.role)
+    const accessToken = this.generateAccessToken(user.id, user.role, user.email)
     const refreshToken = this.generateRefreshToken(user.id)
 
     // Stocker le refresh token en DB
@@ -211,7 +224,8 @@ export class AuthService {
 
     // Fix timing attack: always run bcrypt.compare even if user doesn't exist
     // This ensures constant-time response regardless of email validity
-    const passwordToCompare = user?.password || '$2a$10$invalidhashxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+    // Using a valid bcrypt hash to make timing analysis impossible
+    const passwordToCompare = user?.password || AuthService.DUMMY_HASH
     const isPasswordValid = await this.comparePassword(
       data.password,
       passwordToCompare
@@ -223,7 +237,7 @@ export class AuthService {
     }
 
     // Générer les tokens
-    const accessToken = this.generateAccessToken(user.id, user.role)
+    const accessToken = this.generateAccessToken(user.id, user.role, user.email)
     const refreshToken = this.generateRefreshToken(user.id)
 
     // Stocker le refresh token en DB
@@ -282,7 +296,7 @@ export class AuthService {
     })
 
     // Générer de nouveaux tokens
-    const newAccessToken = this.generateAccessToken(storedToken.userId, storedToken.user.role)
+    const newAccessToken = this.generateAccessToken(storedToken.userId, storedToken.user.role, storedToken.user.email)
     const newRefreshToken = this.generateRefreshToken(storedToken.userId)
 
     // Stocker le nouveau refresh token en DB

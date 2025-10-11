@@ -1,6 +1,12 @@
 import type { FastifyInstance } from 'fastify'
 import { authController } from '@/controllers/auth.controller'
 import { authMiddleware } from '@/middlewares/auth.middleware'
+import {
+  registerSchema,
+  loginSchema,
+  refreshTokenSchema,
+  meSchema,
+} from '@/schemas/openapi.schema'
 
 /**
  * Routes d'authentification
@@ -16,6 +22,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/register',
     {
+      schema: registerSchema,
       config: {
         rateLimit: {
           max: 3,
@@ -30,14 +37,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
    * POST /api/auth/login
    * Connexion d'un utilisateur
    * Body: { email, password }
-   * Rate limit: 5 requests per 15 minutes (prevent brute force)
+   * Rate limit: 3 requests per 15 minutes (prevent brute force attacks)
+   * Note: Reduced from 5 to 3 for better security against password guessing
    */
   app.post(
     '/login',
     {
+      schema: loginSchema,
       config: {
         rateLimit: {
-          max: 5,
+          max: 3,
           timeWindow: '15 minutes',
         },
       },
@@ -54,6 +63,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post(
     '/refresh',
     {
+      schema: refreshTokenSchema,
       config: {
         rateLimit: {
           max: 10,
@@ -78,6 +88,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get(
     '/me',
     {
+      schema: meSchema,
       preHandler: authMiddleware,
     },
     authController.me.bind(authController)

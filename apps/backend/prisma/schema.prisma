@@ -47,6 +47,9 @@ model RefreshToken {
 
   @@index([userId])
   @@index([token, revoked])
+  @@index([revoked])         // Performance: cleanup job & queries filtering by revoked
+  @@index([userId, revoked]) // Performance: getUserActiveTokens queries
+  @@index([expiresAt])       // Performance: cleanup job expiration check
   @@map("refresh_tokens")
 }
 
@@ -60,6 +63,7 @@ model VerificationToken {
 
   @@index([userId])
   @@index([token])
+  @@index([expiresAt])       // Performance: cleanup job expiration check
   @@map("verification_tokens")
 }
 
@@ -73,6 +77,7 @@ model PasswordResetToken {
 
   @@index([userId])
   @@index([token])
+  @@index([expiresAt])       // Performance: cleanup job expiration check
   @@map("password_reset_tokens")
 }
 
@@ -86,6 +91,7 @@ model CsrfToken {
 
   @@index([userId])
   @@index([token])
+  @@index([expiresAt])       // Performance: cleanup job expiration check
   @@map("csrf_tokens")
 }
 

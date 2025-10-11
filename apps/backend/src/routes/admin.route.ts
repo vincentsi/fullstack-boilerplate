@@ -3,6 +3,14 @@ import { authMiddleware } from '../middlewares/auth.middleware'
 import { requireRole } from '../middlewares/rbac.middleware'
 import { prisma } from '../config/prisma'
 import { CleanupService } from '../services/cleanup.service'
+import { BackupService } from '../services/backup.service'
+import {
+  listUsersSchema,
+  updateUserRoleSchema,
+  deleteUserSchema,
+  cleanupTokensSchema,
+  adminStatsSchema,
+} from '@/schemas/openapi.schema'
 
 type Role = 'USER' | 'ADMIN' | 'MODERATOR'
 
@@ -25,7 +33,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
      */
     fastify.get<{
       Querystring: { page?: string; limit?: string }
-    }>('/users', async (request, reply) => {
+    }>('/users', { schema: listUsersSchema }, async (request, reply) => {
       // Paramètres de pagination avec valeurs par défaut
       const page = parseInt(request.query.page || '1', 10)
       const limit = Math.min(parseInt(request.query.limit || '20', 10), 100) // Max 100 par page
@@ -86,7 +94,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
     fastify.patch<{
       Params: { id: string }
       Body: { role: Role }
-    }>('/users/:id/role', async (request, reply) => {
+    }>('/users/:id/role', { schema: updateUserRoleSchema }, async (request, reply) => {
       const { id } = request.params
       const { role } = request.body
 
@@ -121,7 +129,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
      */
     fastify.delete<{
       Params: { id: string }
-    }>('/users/:id', async (request, reply) => {
+    }>('/users/:id', { schema: deleteUserSchema }, async (request, reply) => {
       const { id } = request.params
 
       // Empêcher l'admin de se supprimer lui-même
@@ -146,12 +154,50 @@ export async function adminRoutes(fastify: FastifyInstance) {
      * Déclenche un nettoyage manuel des tokens expirés
      * POST /api/admin/cleanup-tokens
      */
-    fastify.post('/cleanup-tokens', async (request, reply) => {
+    fastify.post('/cleanup-tokens', { schema: cleanupTokensSchema }, async (_request, reply) => {
       await CleanupService.runManualCleanup(fastify)
 
       reply.send({
         success: true,
         message: 'Nettoyage des tokens exécuté avec succès',
+      })
+    })
+
+    /**
+     * Créer un backup manuel de la base de données
+     * POST /api/admin/backup
+     */
+    fastify.post('/backup', async (_request, reply) => {
+      try {
+        const backupPath = await BackupService.createBackup()
+
+        reply.send({
+          success: true,
+          message: 'Backup créé avec succès',
+          data: { backupPath },
+        })
+      } catch (error) {
+        reply.status(500).send({
+          success: false,
+          error: 'Échec de la création du backup',
+        })
+      }
+    })
+
+    /**
+     * Lister tous les backups disponibles
+     * GET /api/admin/backups
+     */
+    fastify.get('/backups', async (_request, reply) => {
+      const backups = await BackupService.listBackups()
+      const stats = await BackupService.getBackupStats()
+
+      reply.send({
+        success: true,
+        data: {
+          backups,
+          stats,
+        },
       })
     })
   })
@@ -165,7 +211,7 @@ export async function adminRoutes(fastify: FastifyInstance) {
      * Statistiques des utilisateurs par rôle
      * GET /api/admin/stats
      */
-    fastify.get('/stats', async (request, reply) => {
+    fastify.get('/stats', { schema: adminStatsSchema }, async (_request, reply) => {
       const stats = await prisma.user.groupBy({
         by: ['role'],
         _count: true,

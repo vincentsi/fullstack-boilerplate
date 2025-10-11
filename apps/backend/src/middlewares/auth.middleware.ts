@@ -59,14 +59,12 @@ export async function authMiddleware(
     // Vérifier le token
     const payload = authService.verifyAccessToken(token)
 
-    // Récupérer l'email depuis la DB (nécessaire pour Stripe)
-    const user = await authService.getCurrentUser(payload.userId)
-
     // Injecter userId, role et email dans request pour les handlers
+    // Email est maintenant dans le JWT pour éviter une query DB à chaque requête (N+1 query fix)
     request.user = {
       userId: payload.userId,
       role: payload.role as Role,
-      email: user.email,
+      email: payload.email,
     }
   } catch (error) {
     if (error instanceof Error) {

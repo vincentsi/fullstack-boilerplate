@@ -1,5 +1,6 @@
 import { FastifyInstance } from 'fastify'
 import { PasswordResetController } from '../controllers/password-reset.controller'
+import { requestPasswordResetSchema, resetPasswordSchema } from '@/schemas/openapi.schema'
 
 /**
  * Routes de réinitialisation de mot de passe
@@ -13,6 +14,7 @@ export async function passwordResetRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/forgot-password',
     {
+      schema: requestPasswordResetSchema,
       config: {
         rateLimit: {
           max: 3,
@@ -28,6 +30,7 @@ export async function passwordResetRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/reset-password',
     {
+      schema: resetPasswordSchema,
       config: {
         rateLimit: {
           max: 5,

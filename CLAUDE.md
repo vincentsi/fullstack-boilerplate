@@ -206,13 +206,19 @@ The monorepo foundation is complete with:
 - ✅ Shared ESLint/Prettier configuration
 - ✅ Git hooks with Husky + lint-staged
 - ✅ Backend foundation (Fastify + Prisma ORM setup)
-- ✅ Security middlewares (Helmet, CORS, Rate limiting)
+- ✅ Security middlewares (Helmet, CORS, Rate limiting, Compression, CSRF protection)
 - ✅ Environment validation with Zod + dotenv
 - ✅ Logging with Pino (pretty logs in dev)
 - ✅ Health check endpoint
 - ✅ Authentication system (JWT with bcrypt, refresh tokens)
-- ✅ Auth routes: register, login, refresh, logout, me
-- ⏳ Frontend implementation (Next.js + shadcn/ui + React Query) - in progress
+- ✅ Auth routes: register, login, refresh, logout, me, password reset, email verification
+- ✅ RBAC (Role-Based Access Control) with requireRole middleware
+- ✅ Stripe subscription system (checkout, webhooks, billing portal)
+- ✅ Subscription middleware for premium features
+- ✅ CSRF protection for state-changing operations
+- ✅ Token cleanup cron job (expired tokens)
+- ✅ Frontend implementation (Next.js 15 + shadcn/ui + TanStack Query)
+- ✅ Stripe frontend integration (@stripe/react-stripe-js)
 - ⏳ Testing setup - planned
 
 ### Package Scoping
@@ -239,11 +245,14 @@ Comprehensive documentation outside the boilerplate for library references:
 
 ### Key Documentation Files
 
-- `docs/dotenv.md` - Environment variables management with dotenv
-- `docs/code-explanations/backend/fastify-setup.md` - Complete Fastify architecture explanation
-- `docs/code-explanations/backend/prisma-config.md` - Prisma schema and setup details
-- `docs/code-explanations/backend/env-validation.md` - Environment validation with Zod
-- `docs/code-explanations/backend/authentication.md` - Complete JWT auth system (register, login, middleware, security)
+External documentation location: `../docs/` (outside the project)
+
+- `docs/stripe-integration.md` - Complete Stripe subscription system guide
+- `docs/code-explanations/backend/csrf-protection.md` - CSRF token protection
+- `docs/code-explanations/backend/token-cleanup.md` - Automated token cleanup
+- `docs/code-explanations/backend/rate-limiting-advanced.md` - Rate limiting configuration
+- `docs/code-explanations/backend/rbac-optimization.md` - Role-based access control
+- `docs/code-explanations/backend/pagination.md` - Pagination patterns
 
 ## Backend-Specific Patterns
 
@@ -301,11 +310,15 @@ Never use relative imports like `../../../config/env`
 
 **Available Auth Routes:**
 ```typescript
-POST /api/auth/register  // Body: { email, password, name? }
-POST /api/auth/login     // Body: { email, password }
-POST /api/auth/refresh   // Body: { refreshToken }
-POST /api/auth/logout    // Client-side token deletion
-GET  /api/auth/me        // Headers: { Authorization: "Bearer <token>" }
+POST /api/auth/register       // Body: { email, password, name? }
+POST /api/auth/login          // Body: { email, password }
+POST /api/auth/refresh        // Body: { refreshToken }
+POST /api/auth/logout         // Client-side token deletion
+GET  /api/auth/me             // Headers: { Authorization: "Bearer <token>" }
+POST /api/auth/forgot-password // Body: { email }
+POST /api/auth/reset-password  // Body: { token, newPassword }
+POST /api/verification/send    // Send verification email
+POST /api/verification/verify  // Body: { token }
 ```
 
 **Password Validation (Zod):**
@@ -319,13 +332,165 @@ GET  /api/auth/me        // Headers: { Authorization: "Bearer <token>" }
 - JWT secrets must be 32+ characters (enforced by Zod)
 - Use `request.user?.userId` to access authenticated user ID
 
+### Stripe Subscription System
+
+Complete subscription management with 3 plans:
+- **FREE**: Default plan (no payment required)
+- **PRO**: $15/month - Advanced features
+- **BUSINESS**: $50/month - Full features + team support
+
+**Stripe Integration Architecture:**
+```typescript
+// Backend Service (apps/backend/src/services/stripe.service.ts)
+stripeService.createCheckoutSession()     // Create payment session
+stripeService.createBillingPortalSession() // Manage subscription
+stripeService.handleWebhook()             // Sync with Stripe events
+stripeService.hasFeatureAccess()          // Check plan permissions
+
+// Frontend Hooks (apps/frontend/lib/stripe/hooks.ts)
+useCheckout()        // Create checkout and redirect to Stripe
+useBillingPortal()   // Open billing portal
+useSubscription()    // Fetch current subscription data
+```
+
+**Subscription Middleware:**
+```typescript
+// Protect routes by subscription plan
+fastify.addHook('preHandler', requireSubscription(PlanType.PRO))
+fastify.addHook('preHandler', requireSubscription(PlanType.BUSINESS))
+
+// Plan hierarchy: FREE < PRO < BUSINESS
+// PRO users can access PRO features
+// BUSINESS users can access both PRO and BUSINESS features
+```
+
+**Webhook Events Handled:**
+- `checkout.session.completed` - Create subscription
+- `customer.subscription.updated` - Update subscription status
+- `customer.subscription.deleted` - Cancel subscription
+- `invoice.payment_failed` - Mark subscription as past_due
+
+**Database Models:**
+```typescript
+User {
+  stripeCustomerId    String?    // Stripe customer ID
+  subscriptionStatus  Status     // NONE, ACTIVE, PAST_DUE, CANCELED, etc.
+  subscriptionId      String?    // Current subscription ID
+  planType            PlanType   // FREE, PRO, BUSINESS
+  currentPeriodEnd    DateTime?  // Subscription expiry
+}
+
+Subscription {
+  stripeSubscriptionId  String
+  stripePriceId         String
+  status                Status
+  planType              PlanType
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean
+}
+```
+
+**Environment Variables Required:**
+```env
+STRIPE_SECRET_KEY=sk_test_...        # Backend secret key
+STRIPE_PUBLISHABLE_KEY=pk_test_...   # Frontend publishable key
+STRIPE_WEBHOOK_SECRET=whsec_...      # Webhook signing secret
+```
+
+**Stripe Routes:**
+```typescript
+POST /api/stripe/create-checkout-session  // Body: { priceId }
+POST /api/stripe/create-portal-session    // Open billing portal
+GET  /api/stripe/subscription             // Get current subscription
+POST /api/stripe/webhook                  // Stripe webhook endpoint (raw body)
+```
+
+**Frontend Pricing Component:**
+```typescript
+import { PricingCard } from '@/components/pricing/PricingCard'
+import { PLANS } from '@/lib/stripe/config'
+
+<PricingCard
+  plan={PLANS.PRO}
+  currentPlan={user?.planType}
+/>
+```
+
+**Important Stripe Implementation Notes:**
+- Always use `apiVersion: '2025-09-30.clover'` in Stripe initialization
+- Webhook endpoint must receive raw body (not JSON parsed)
+- Use `upsert` in webhooks for idempotency (handle duplicate events)
+- For Stripe v19+ type issues, create custom interfaces and use `as unknown as CustomType` casting
+- Never use `@ts-expect-error` - fix TypeScript errors properly with type casting
+
+### RBAC (Role-Based Access Control)
+
+**User Roles:**
+```typescript
+enum Role {
+  USER       // Default role
+  MODERATOR  // Can moderate content
+  ADMIN      // Full access
+}
+```
+
+**RBAC Middleware (Zero DB Queries):**
+```typescript
+// Protect route by role (reads from JWT, no DB query)
+fastify.addHook('preHandler', requireRole('ADMIN'))
+fastify.addHook('preHandler', requireRole('ADMIN', 'MODERATOR'))
+
+// User object injected by authMiddleware
+request.user = {
+  userId: string
+  email: string
+  role: 'USER' | 'ADMIN' | 'MODERATOR'
+}
+```
+
+**Admin Routes Example:**
+```typescript
+// apps/backend/src/routes/admin.route.ts
+export async function adminRoutes(fastify: FastifyInstance) {
+  fastify.addHook('preHandler', authMiddleware)      // Must be logged in
+  fastify.addHook('preHandler', requireRole('ADMIN')) // Must be admin
+
+  // All routes here are admin-only
+  fastify.get('/users', adminController.listUsers)
+  fastify.delete('/users/:id', adminController.deleteUser)
+}
+```
+
+### CSRF Protection
+
+**Implementation:**
+- Token stored in database (`CsrfToken` model)
+- Validated on all state-changing operations (POST, PUT, DELETE, PATCH)
+- Exempted routes: `/api/auth/*` (auth endpoints)
+- Frontend must send CSRF token in `X-CSRF-Token` header
+
+**Usage in Controllers:**
+```typescript
+// Token automatically validated by global preHandler hook
+// Controllers don't need to check CSRF manually
+```
+
+**Token Cleanup:**
+- Automated cron job runs periodically
+- Removes expired tokens from: `RefreshToken`, `VerificationToken`, `PasswordResetToken`, `CsrfToken`
+
 ### TypeScript Module Augmentation
 
 Custom types are defined in `src/types/fastify.d.ts`:
 ```typescript
 declare module 'fastify' {
   interface FastifyRequest {
-    user?: { userId: string }
+    user?: {
+      userId: string
+      email: string
+      role: 'USER' | 'ADMIN' | 'MODERATOR'
+    }
   }
 }
 ```
@@ -639,11 +804,63 @@ const apiUrl = process.env.NEXT_PUBLIC_API_URL
 
 **Security note:** Only prefix with `NEXT_PUBLIC_` if it's safe to expose to the browser. Server-only secrets should NOT have this prefix.
 
-## Workflow modification
+## Critical Implementation Rules
 
-🚨 **CRITICAL RULE - ALWAYS FOLLOW THIS** 🚨
+### TypeScript Error Handling (User Preference)
 
-**BEFORE editing any files, you MUST Read at least 3 files** that will help you to understand how to make a coherent and consistency.
+🚨 **NEVER use `@ts-expect-error` or `@ts-ignore`** to suppress TypeScript errors.
+
+Instead, use these approaches:
+
+**1. Create Custom Interfaces:**
+```typescript
+// ❌ BAD - Suppressing error
+const sub = stripeSubscription.current_period_start // @ts-expect-error
+
+// ✅ GOOD - Custom interface with type casting
+interface StripeSubscriptionData {
+  id: string
+  customer: string
+  status: Stripe.Subscription.Status
+  current_period_start: number
+  current_period_end: number
+}
+
+const sub = stripeSubscription as unknown as StripeSubscriptionData
+const periodStart = sub.current_period_start // ✅ Type-safe
+```
+
+**2. Use Type Casting with `as unknown as`:**
+```typescript
+// When Stripe types don't match actual API response
+const invoice = stripeInvoice as unknown as { subscription?: string }
+```
+
+**3. Fix the Root Cause:**
+- Read the library documentation
+- Check actual API response structure
+- Create proper type definitions
+- Never suppress errors - always fix them properly
+
+### Documentation Location Rule
+
+🚨 **All documentation MUST be outside the project directory**
+
+**Correct location:**
+```
+nodejs/docs/                           # ✅ Main documentation
+nodejs/docs/code-explanations/backend/ # ✅ Backend explanations
+nodejs/docs/code-explanations/frontend/ # ✅ Frontend explanations
+```
+
+**Incorrect location:**
+```
+fullstack-boilerplate/docs/            # ❌ NEVER put docs here
+```
+
+### Workflow Rule
+
+🚨 **BEFORE editing any files, you MUST Read at least 3 files** that will help you understand how to make coherent and consistent changes.
 
 This is **NON-NEGOTIABLE**. Do not skip this step under any circumstances. Reading existing files ensures:
 
@@ -656,9 +873,38 @@ This is **NON-NEGOTIABLE**. Do not skip this step under any circumstances. Readi
 
 1. **Similar files**: Read files that do similar functionality to understand patterns and conventions
 2. **Imported dependencies**: Read the definition/implementation of any imports you're not 100% sure how to use correctly - understand their API, types, and usage patterns
+3. **Related middleware/services**: Understand how existing code handles similar use cases
 
 **Steps to follow:**
 
 1. Read at least 3 relevant existing files (similar functionality + imported dependencies)
 2. Understand the patterns, conventions, and API usage
 3. Only then proceed with creating/editing files
+
+### Common TypeScript Gotchas
+
+**ZodError Property:**
+```typescript
+// ❌ BAD
+error.errors
+
+// ✅ GOOD
+error.issues
+```
+
+**Stripe API Version:**
+```typescript
+// ✅ GOOD - Always use this version
+const stripe = new Stripe(apiKey, {
+  apiVersion: '2025-09-30.clover'
+})
+```
+
+**Fastify Config Options:**
+```typescript
+// ❌ BAD - rawBody is not a valid config option
+fastify.post('/webhook', { config: { rawBody: true } }, handler)
+
+// ✅ GOOD - Remove config block entirely for webhooks
+fastify.post('/webhook', handler)
+```

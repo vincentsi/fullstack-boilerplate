@@ -15,10 +15,11 @@ import { env } from '@/config/env'
 export async function registerSecurityMiddlewares(
   app: FastifyInstance
 ): Promise<void> {
-  // Compression - Gzip/Brotli
+  // Compression - Gzip/Deflate (optimisé pour API)
   await app.register(compress, {
     global: true,
-    threshold: 1024, // Compress responses > 1KB
+    threshold: 2048, // Compress responses > 2KB (recommandation standard)
+    encodings: ['gzip', 'deflate'], // Éviter Brotli pour API (trop lent en temps réel)
   })
 
   // Helmet - Security headers

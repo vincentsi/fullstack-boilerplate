@@ -1,6 +1,10 @@
 import { FastifyInstance } from 'fastify'
 import { StripeController } from '../controllers/stripe.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
+import {
+  createCheckoutSessionSchema,
+  getSubscriptionSchema,
+} from '@/schemas/openapi.schema'
 
 /**
  * Routes Stripe
@@ -30,6 +34,7 @@ export async function stripeRoutes(fastify: FastifyInstance) {
      */
     fastify.post(
       '/create-checkout-session',
+      { schema: createCheckoutSessionSchema },
       controller.createCheckoutSession.bind(controller)
     )
 
@@ -54,7 +59,11 @@ export async function stripeRoutes(fastify: FastifyInstance) {
      *   subscription: { ... }
      * }
      */
-    fastify.get('/subscription', controller.getSubscription.bind(controller))
+    fastify.get(
+      '/subscription',
+      { schema: getSubscriptionSchema },
+      controller.getSubscription.bind(controller)
+    )
   })
 
   // ===== Webhook (SANS auth) =====

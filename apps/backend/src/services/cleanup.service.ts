@@ -13,55 +13,91 @@ export class CleanupService {
    * - VerificationTokens expirés
    * - PasswordResetTokens expirés
    * - CsrfTokens expirés
+   *
+   * Optimisé avec batching pour éviter les locks prolongés sur la DB
    */
   static async cleanupExpiredTokens(): Promise<void> {
     const now = new Date()
+    const BATCH_SIZE = 1000 // Supprimer par lots de 1000
 
     try {
-      // Supprimer les refresh tokens expirés
-      const deletedRefreshTokens = await prisma.refreshToken.deleteMany({
-        where: {
-          expiresAt: {
-            lt: now,
-          },
-        },
-      })
-
-      // Supprimer les verification tokens expirés
-      const deletedVerificationTokens = await prisma.verificationToken.deleteMany(
-        {
-          where: {
-            expiresAt: {
-              lt: now,
-            },
-          },
-        }
+      // Cleanup refresh tokens avec batching
+      const deletedRefreshTokens = await this.cleanupModelWithBatching(
+        'refresh tokens',
+        prisma.refreshToken,
+        now,
+        BATCH_SIZE
       )
 
-      // Supprimer les password reset tokens expirés
-      const deletedResetTokens = await prisma.passwordResetToken.deleteMany({
-        where: {
-          expiresAt: {
-            lt: now,
-          },
-        },
-      })
+      // Cleanup verification tokens avec batching
+      const deletedVerificationTokens = await this.cleanupModelWithBatching(
+        'verification tokens',
+        prisma.verificationToken,
+        now,
+        BATCH_SIZE
+      )
 
-      // Supprimer les CSRF tokens expirés
-      const deletedCsrfTokens = await prisma.csrfToken.deleteMany({
-        where: {
-          expiresAt: {
-            lt: now,
-          },
-        },
-      })
+      // Cleanup password reset tokens avec batching
+      const deletedResetTokens = await this.cleanupModelWithBatching(
+        'password reset tokens',
+        prisma.passwordResetToken,
+        now,
+        BATCH_SIZE
+      )
+
+      // Cleanup CSRF tokens avec batching
+      const deletedCsrfTokens = await this.cleanupModelWithBatching(
+        'CSRF tokens',
+        prisma.csrfToken,
+        now,
+        BATCH_SIZE
+      )
 
       console.log(
-        `✅ Cleanup completed: ${deletedRefreshTokens.count} refresh tokens, ${deletedVerificationTokens.count} verification tokens, ${deletedResetTokens.count} reset tokens, ${deletedCsrfTokens.count} CSRF tokens deleted`
+        `✅ Cleanup completed: ${deletedRefreshTokens} refresh tokens, ${deletedVerificationTokens} verification tokens, ${deletedResetTokens} reset tokens, ${deletedCsrfTokens} CSRF tokens deleted`
       )
     } catch (error) {
       console.error('❌ Error during token cleanup:', error)
     }
+  }
+
+  /**
+   * Nettoie un modèle spécifique par batches
+   * @param _modelName - Nom du modèle pour les logs (non utilisé actuellement)
+   * @param model - Modèle Prisma à nettoyer
+   * @param now - Date actuelle
+   * @param batchSize - Taille des batches
+   * @returns Nombre total de tokens supprimés
+   */
+  private static async cleanupModelWithBatching(
+    _modelName: string,
+    model: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+    now: Date,
+    batchSize: number
+  ): Promise<number> {
+    let totalDeleted = 0
+    let batchDeleted = 0
+
+    do {
+      // Supprimer un batch
+      const result = await model.deleteMany({
+        where: {
+          expiresAt: { lt: now },
+        },
+        take: batchSize,
+      })
+
+      batchDeleted = result.count
+      totalDeleted += batchDeleted
+
+      // Pause entre batches pour libérer les locks DB
+      // Permet aux autres queries de s'exécuter
+      if (batchDeleted === batchSize) {
+        await new Promise((resolve) => setTimeout(resolve, 100)) // 100ms pause
+      }
+    } while (batchDeleted === batchSize)
+
+    return totalDeleted
   }
 
   /**

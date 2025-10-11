@@ -2,6 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { requireSubscription } from '../middlewares/subscription.middleware'
 import { PlanType } from '@prisma/client'
+import { proFeatureSchema, businessFeatureSchema } from '@/schemas/openapi.schema'
 
 /**
  * Routes Premium (exemple)
@@ -21,7 +22,7 @@ export async function premiumRoutes(fastify: FastifyInstance) {
      *
      * Accessible aux users avec plan PRO ou BUSINESS
      */
-    fastify.get('/pro-feature', async (request, reply) => {
+    fastify.get('/pro-feature', { schema: proFeatureSchema }, async (_request, reply) => {
       reply.send({
         success: true,
         message: 'Welcome to PRO feature!',
@@ -37,7 +38,7 @@ export async function premiumRoutes(fastify: FastifyInstance) {
      * POST /api/premium/export-data
      */
     fastify.post('/export-data', async (request, reply) => {
-      const userId = request.user?.userId
+      const userId = request.user?.userId ?? 'unknown'
 
       // Logique d'export (exemple)
       reply.send({
@@ -62,7 +63,7 @@ export async function premiumRoutes(fastify: FastifyInstance) {
      *
      * Accessible uniquement aux users avec plan BUSINESS
      */
-    fastify.get('/business-feature', async (request, reply) => {
+    fastify.get('/business-feature', { schema: businessFeatureSchema }, async (_request, reply) => {
       reply.send({
         success: true,
         message: 'Welcome to BUSINESS feature!',
@@ -77,7 +78,7 @@ export async function premiumRoutes(fastify: FastifyInstance) {
      * Exemple: Gestion d'équipe
      * GET /api/premium/team
      */
-    fastify.get('/team', async (request, reply) => {
+    fastify.get('/team', async (_request, reply) => {
       reply.send({
         success: true,
         message: 'Team management',

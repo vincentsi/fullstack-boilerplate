@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify'
 import { prisma } from '@/config/prisma'
+import { healthCheckSchema } from '@/schemas/openapi.schema'
 
 /**
  * Health check route
@@ -7,7 +8,7 @@ import { prisma } from '@/config/prisma'
  * Utile pour Docker healthchecks, monitoring, load balancers
  */
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/health', async (request, reply) => {
+  app.get('/health', { schema: healthCheckSchema }, async (request, reply) => {
     const checks = {
       database: false,
     }
